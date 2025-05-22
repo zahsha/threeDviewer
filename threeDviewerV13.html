@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Model Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 
+        Import Map:
+        This tells the browser how to resolve "bare" module specifiers like "three"
+        or "three/addons/" when they are encountered in JavaScript modules.
+    -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+        "three/addons/environments/RoomEnvironment.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js",
+        "three/addons/loaders/FBXLoader.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/FBXLoader.js"
+      }
+    }
+    </script>
+    <style>
+        /* Custom styles for active button and viewer container */
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; }
+        #viewerContainer canvas { display: block; }
+        
+        /* Material Design Inspired Button Styles (Default State) */
+        .material-button {
+            background-color: #1e88e5; /* Material Blue 600 */
+            color: white;
+            padding: 0.5rem 1rem; /* 8px 16px */
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 500; /* Medium */
+            box-shadow: 0 2px 2px 0 rgba(0,0,0,0.14), 0 3px 1px -2px rgba(0,0,0,0.12), 0 1px 5px 0 rgba(0,0,0,0.20);
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            cursor: pointer; /* Ensure cursor indicates clickable */
+            font-size: 0.75rem; /* 12px for smaller buttons */
+        }
+        @media (min-width: 640px) { /* sm breakpoint */
+            .material-button {
+                font-size: 0.875rem; /* 14px for larger screens */
+            }
+        }
+        .material-button:hover {
+            background-color: #1565c0; /* Material Blue 800 */
+            box-shadow: 0 4px 5px 0 rgba(0,0,0,0.14), 0 1px 10px 0 rgba(0,0,0,0.12), 0 2px 4px -1px rgba(0,0,0,0.20);
+        }
+        .material-button.active { /* For active mode buttons */
+            background-color: #0d47a1; /* Material Blue 900 */
+            font-weight: 700; /* Bold */
+        }
+
+        /* Specific styling for file input to somewhat match */
+        .material-file-input {
+             color: #e0e0e0; /* Lighter text for dark mode */
+        }
+        .material-file-input::file-selector-button {
+            background-color: #1e88e5;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 500;
+            border: none;
+            box-shadow: 0 2px 2px 0 rgba(0,0,0,0.14), 0 3px 1px -2px rgba(0,0,0,0.12), 0 1px 5px 0 rgba(0,0,0,0.20);
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            margin-right: 0.5rem;
+            cursor: pointer;
+            font-size: 0.75rem; /* 12px */
+        }
+         @media (min-width: 640px) { /* sm breakpoint */
+            .material-file-input::file-selector-button {
+                font-size: 0.875rem; /* 14px */
+            }
+        }
+        .material-file-input::file-selector-button:hover {
+            background-color: #1565c0;
+            box-shadow: 0 4px 5px 0 rgba(0,0,0,0.14), 0 1px 10px 0 rgba(0,0,0,0.12), 0 2px 4px -1px rgba(0,0,0,0.20);
+        }
+
+
+        /* Simple loading spinner */
+        .loader {
+            border: 4px solid #f3f3f3; /* Light grey */
+            border-top: 4px solid #1e88e5; /* Material Blue */
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+        body { font-family: 'Roboto', 'Inter', sans-serif; } /* Prioritize Roboto for Material feel */
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+
+    <div class="flex flex-col h-screen">
+        <header id="mainHeader" class="p-4 bg-gray-800 shadow-lg">
+            <h1 class="text-xl sm:text-2xl font-medium text-center text-gray-100">3D Model Viewer</h1>
+        </header>
+
+        <div id="controlsPanel" class="p-4 bg-gray-700 shadow-md">
+            <div class="container mx-auto flex flex-col sm:flex-row sm:flex-wrap items-center justify-center gap-3 sm:gap-4"> 
+                <div class="flex items-center">
+                    <label for="fileInput" class="mr-2 text-xs sm:text-sm whitespace-nowrap text-gray-200">Load Model:</label>
+                    <input type="file" id="fileInput" accept=".stl,.glb,.gltf,.fbx" class="material-file-input text-xs sm:text-sm w-full max-w-xs"/> </div>
+                <div class="flex space-x-1 sm:space-x-2"> 
+                    <button id="mode2D" class="material-button active">2D</button>
+                    <button id="modeSBS" class="material-button">3D SBS</button>
+                    <button id="modeAnaglyph" class="material-button">3D Anaglyph</button>
+                </div>
+                <div class="flex space-x-1 sm:space-x-2">
+                    <button id="aspectOriginalButton" class="material-button active">Original AR</button>
+                    <button id="aspect16x9Button" class="material-button">16:9 AR</button>
+                    <button id="aspect4x3Button" class="material-button">4:3 AR</button>
+                </div>
+                <div class="flex space-x-1 sm:space-x-2">
+                    <button id="zoomInButton" class="material-button">Zoom In</button>
+                    <button id="zoomOutButton" class="material-button">Zoom Out</button>
+                    <button id="centerObjectButton" class="material-button">Center</button>
+                </div>
+                 <div id="sbsControls" class="flex items-center space-x-2">
+                    <label for="eyeSeparationSlider" class="text-xs sm:text-sm whitespace-nowrap text-gray-200">SBS Sep:</label>
+                    <input type="range" id="eyeSeparationSlider" min="-100" max="100" step="0.001" value="0.064" class="w-20 sm:w-28 h-2 bg-gray-500 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                    <span id="eyeSeparationValue" class="text-xs sm:text-sm text-gray-300 w-10 text-right">0.064</span>
+                </div>
+                <div class="flex space-x-1 sm:space-x-2">
+                    <button id="fullscreenButton" class="material-button">Full Screen</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="statusMessages" class="text-center py-2">
+            <div id="loadingIndicator" class="hidden"><div class="loader"></div><p>Loading model...</p></div>
+            <div id="errorMessage" class="hidden text-red-400 p-2"></div>
+        </div>
+
+        <div id="viewerContainer" class="flex-grow relative w-full h-full min-h-0">
+            </div>
+    </div>
+
+    <script type="module">
+        // Import Three.js and necessary modules using paths defined in the import map
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'; 
+        import { AnaglyphEffect } from 'three/addons/effects/AnaglyphEffect.js';
+        import { StereoEffect } from 'three/addons/effects/StereoEffect.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+        // DOM Elements
+        const mainHeader = document.getElementById('mainHeader');
+        const controlsPanel = document.getElementById('controlsPanel');
+        const viewerContainer = document.getElementById('viewerContainer');
+        const fileInput = document.getElementById('fileInput');
+        const mode2DButton = document.getElementById('mode2D');
+        const modeSBSButton = document.getElementById('modeSBS');
+        const modeAnaglyphButton = document.getElementById('modeAnaglyph');
+        const aspectOriginalButton = document.getElementById('aspectOriginalButton');
+        const aspect16x9Button = document.getElementById('aspect16x9Button');
+        const aspect4x3Button = document.getElementById('aspect4x3Button');
+        const zoomInButton = document.getElementById('zoomInButton');
+        const zoomOutButton = document.getElementById('zoomOutButton');
+        const centerObjectButton = document.getElementById('centerObjectButton');
+        const eyeSeparationSlider = document.getElementById('eyeSeparationSlider');
+        const eyeSeparationValueDisplay = document.getElementById('eyeSeparationValue');
+        const sbsControlsDiv = document.getElementById('sbsControls');
+        const fullscreenButton = document.getElementById('fullscreenButton');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const errorMessageDiv = document.getElementById('errorMessage');
+        
+        // Three.js variables
+        let scene, camera, renderer, controls, mixer;
+        let currentObject = null;
+        let currentRenderMode = '2D';
+        let currentAspectRatioMode = 'original';
+        let anaglyphEffect, stereoEffect;
+        const clock = new THREE.Clock();
+        const ZOOM_FACTOR = 0.9; 
+        const SBS_KEYBOARD_STEP = 1.0;
+
+
+        // Initialize Three.js components
+        function init() {
+            console.log("Viewer Initializing...");
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x22272e);
+
+            const aspectWidth = viewerContainer.clientWidth || window.innerWidth;
+            const aspectHeight = viewerContainer.clientHeight || window.innerHeight;
+            camera = new THREE.PerspectiveCamera(45, aspectWidth / aspectHeight, 0.1, 1000);
+            camera.position.set(0, 1, 5); 
+            camera.lookAt(0,0,0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(aspectWidth, aspectHeight);
+            renderer.outputColorSpace = THREE.SRGBColorSpace; 
+            renderer.toneMapping = THREE.ACESFilmicToneMapping; 
+            renderer.toneMappingExposure = 1.0;
+            viewerContainer.appendChild(renderer.domElement);
+
+            const environment = new RoomEnvironment(renderer);
+            const pmremGenerator = new THREE.PMREMGenerator(renderer);
+            scene.environment = pmremGenerator.fromScene(environment).texture;
+            environment.dispose(); 
+            pmremGenerator.dispose();
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = true; 
+            controls.minDistance = 0.01; 
+            controls.maxDistance = 1000; 
+            controls.target.set(0,0,0);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            directionalLight.position.set(5, 10, 7.5).normalize();
+            scene.add(directionalLight);
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+            directionalLight2.position.set(-5, -5, -7.5).normalize();
+            scene.add(directionalLight2);
+
+            anaglyphEffect = new AnaglyphEffect(renderer);
+            anaglyphEffect.setSize(aspectWidth, aspectHeight);
+            stereoEffect = new StereoEffect(renderer);
+            stereoEffect.setSize(aspectWidth, aspectHeight);
+            stereoEffect.eyeSeparation = parseFloat(eyeSeparationSlider.value);
+            
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('keydown', handleKeyDown); 
+            fileInput.addEventListener('change', handleFileLoad);
+            
+            mode2DButton.addEventListener('click', () => setRenderModeUI('2D', 'mode2D'));
+            modeSBSButton.addEventListener('click', () => setRenderModeUI('SBS', 'modeSBS'));
+            modeAnaglyphButton.addEventListener('click', () => setRenderModeUI('Anaglyph', 'modeAnaglyph'));
+
+            aspectOriginalButton.addEventListener('click', () => setAspectRatioModeUI('original', 'aspectOriginalButton'));
+            aspect16x9Button.addEventListener('click', () => setAspectRatioModeUI('16:9', 'aspect16x9Button'));
+            aspect4x3Button.addEventListener('click', () => setAspectRatioModeUI('4:3', 'aspect4x3Button'));
+
+            zoomInButton.addEventListener('click', zoomIn);
+            zoomOutButton.addEventListener('click', zoomOut);
+            centerObjectButton.addEventListener('click', centerCurrentObject);
+            eyeSeparationSlider.addEventListener('input', (event) => {
+                if (stereoEffect) {
+                    stereoEffect.eyeSeparation = parseFloat(event.target.value);
+                }
+                eyeSeparationValueDisplay.textContent = parseFloat(event.target.value).toFixed(3);
+            });
+            fullscreenButton.addEventListener('click', toggleFullScreen); 
+            document.addEventListener('fullscreenchange', handleFullScreenChange); 
+            document.addEventListener('webkitfullscreenchange', handleFullScreenChange);
+            document.addEventListener('mozfullscreenchange', handleFullScreenChange); 
+            document.addEventListener('MSFullscreenChange', handleFullScreenChange); 
+
+            toggleSBSControls(currentRenderMode === 'SBS');
+            updateAspectRatioButtonUI(currentAspectRatioMode === 'original' ? 'aspectOriginalButton' : (currentAspectRatioMode === '16:9' ? 'aspect16x9Button' : 'aspect4x3Button') );
+
+
+            if (viewerContainer.clientWidth === 0 || viewerContainer.clientHeight === 0) {
+                 onWindowResize();
+            }
+            animate();
+            console.log("Viewer Initialization Complete.");
+        }
+
+        // Handle window resize and aspect ratio changes
+        function onWindowResize() {
+            if (!camera || !renderer || !viewerContainer) return;
+            setTimeout(() => {
+                const newWidth = viewerContainer.clientWidth;
+                const newHeight = viewerContainer.clientHeight;
+                if (newWidth === 0 || newHeight === 0) return;
+
+                renderer.setSize(newWidth, newHeight); // Renderer always fills container
+
+                if (currentAspectRatioMode === '16:9') {
+                    camera.aspect = 16 / 9;
+                } else if (currentAspectRatioMode === '4:3') {
+                    camera.aspect = 4 / 3;
+                } else { // 'original' or default
+                    camera.aspect = newWidth / newHeight;
+                }
+                camera.updateProjectionMatrix();
+
+                if (anaglyphEffect) anaglyphEffect.setSize(newWidth, newHeight);
+                if (stereoEffect) stereoEffect.setSize(newWidth, newHeight);
+            }, 50); 
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
+            if (controls) controls.update(); 
+            renderScene();
+        }
+        
+        // Render scene based on current mode
+        function renderScene() {
+            if (!scene || !camera || !renderer) return;
+            switch (currentRenderMode) {
+                case 'SBS':
+                    if (stereoEffect) stereoEffect.render(scene, camera);
+                    break;
+                case 'Anaglyph':
+                    if (anaglyphEffect) anaglyphEffect.render(scene, camera);
+                    break;
+                case '2D':
+                default:
+                    renderer.render(scene, camera);
+                    break;
+            }
+        }
+
+        // --- File Loading ---
+        function handleFileLoad(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            showLoading(true);
+            hideError();
+            clearScene(); 
+            const fileName = file.name.toLowerCase();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const fileBuffer = e.target.result;
+                    if (fileName.endsWith('.stl')) loadSTL(fileBuffer);
+                    else if (fileName.endsWith('.glb') || fileName.endsWith('.gltf')) loadGLTF(fileBuffer);
+                    else if (fileName.endsWith('.fbx')) loadFBX(fileBuffer); 
+                    else {
+                        showError('Unsupported file format. Please use STL, GLB, GLTF, or FBX.');
+                        showLoading(false);
+                    }
+                } catch (error) {
+                    console.error("Error processing file:", error);
+                    showError(`Error loading model: ${error.message || error}`);
+                    showLoading(false);
+                }
+            };
+            reader.onerror = (err) => {
+                console.error("FileReader error:", err);
+                showError('Error reading file.');
+                showLoading(false);
+            }
+            reader.readAsArrayBuffer(file);
+            event.target.value = null; 
+        }
+
+        function loadSTL(buffer) {
+            const loader = new STLLoader();
+            try {
+                const geometry = loader.parse(buffer);
+                geometry.computeVertexNormals(); 
+                const material = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, specular: 0x111111, shininess: 50, flatShading: false });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                addObjectToScene(mesh);
+            } catch (error) {
+                console.error("Error parsing STL:", error);
+                showError(`Error parsing STL: ${error.message || error}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function loadGLTF(buffer) {
+            const loader = new GLTFLoader();
+            const dracoLoader = new DRACOLoader();
+            dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');
+            loader.setDRACOLoader(dracoLoader);
+            try {
+                loader.parse(buffer, '', async (gltf) => { 
+                    const model = gltf.scene;
+                    model.castShadow = true;
+                    model.receiveShadow = true;
+                    // console.log("--- GLTF Model Loaded ---"); // Commented out for cleaner console unless debugging
+
+                    for (const node of model.getObjectsByProperty('isMesh', true)) { 
+                        node.castShadow = true;
+                        node.receiveShadow = true;
+                        if (node.material) {
+                            const materials = Array.isArray(node.material) ? node.material : [node.material];
+                            for (let i = 0; i < materials.length; i++) {
+                                const material = materials[i];
+                                material.side = THREE.DoubleSide; 
+                                
+                                if (material.userData && material.userData.gltfExtensions && material.userData.gltfExtensions.KHR_materials_pbrSpecularGlossiness) {
+                                    const specGlossData = material.userData.gltfExtensions.KHR_materials_pbrSpecularGlossiness;
+                                    if (specGlossData.diffuseTexture && material.map === null) { 
+                                        try {
+                                            const textureIndex = specGlossData.diffuseTexture.index;
+                                            const diffuseTexture = await gltf.parser.getDependency('texture', textureIndex);
+                                            if (diffuseTexture) {
+                                                material.map = diffuseTexture;
+                                                material.map.colorSpace = THREE.SRGBColorSpace;
+                                                material.needsUpdate = true;
+                                            }
+                                        } catch (texError) {
+                                            console.error(`Error loading diffuseTexture for KHR_materials_pbrSpecularGlossiness:`, texError);
+                                        }
+                                    } else if (material.map) {
+                                        material.map.colorSpace = THREE.SRGBColorSpace;
+                                    }
+                                } else if (material.map) { 
+                                    material.map.colorSpace = THREE.SRGBColorSpace; 
+                                }
+
+                                if (material.emissiveMap) {
+                                    material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+                                }
+                            }
+                        }
+                    }
+                    addObjectToScene(model);
+                    if (gltf.animations && gltf.animations.length) {
+                        mixer = new THREE.AnimationMixer(model);
+                        gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+                    }
+                    showLoading(false);
+                }, error => { 
+                    console.error('Error loading GLTF (parse callback):', error);
+                    showError(`Error loading GLTF model: ${error.message || error}`);
+                    showLoading(false);
+                });
+            } catch (error) {
+                 console.error('Error setting up GLTF loader:', error);
+                 showError(`Error setting up GLTF loader: ${error.message || error}`);
+                 showLoading(false);
+            }
+        }
+
+        function loadFBX(buffer) {
+            const loader = new FBXLoader();
+            try {
+                const model = loader.parse(buffer);
+                // console.log("--- FBX Model Loaded ---", model); // Commented out for cleaner console unless debugging
+                model.castShadow = true;
+                model.receiveShadow = true;
+                model.traverse(node => {
+                    if (node.isMesh) {
+                        node.castShadow = true;
+                        node.receiveShadow = true;
+                        if (node.material) {
+                            const materials = Array.isArray(node.material) ? node.material : [node.material];
+                            materials.forEach(material => {
+                                material.side = THREE.DoubleSide;
+                                if (material.map) {
+                                    material.map.colorSpace = THREE.SRGBColorSpace;
+                                }
+                                if (material.emissiveMap) {
+                                    material.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+                                }
+                                // console.log("FBX Material:", material.name || "Unnamed", material); // Commented out
+                            });
+                        }
+                    }
+                });
+                addObjectToScene(model);
+
+                if (model.animations && model.animations.length) {
+                    mixer = new THREE.AnimationMixer(model);
+                    model.animations.forEach((clip) => {
+                        mixer.clipAction(clip).play();
+                    });
+                }
+                showLoading(false);
+            } catch (error) {
+                console.error("Error parsing FBX:", error);
+                showError(`Error parsing FBX: ${error.message || error}`);
+                showLoading(false);
+            }
+        }
+        
+        // --- Scene Management ---
+        function clearScene() {
+            if (currentObject) {
+                scene.remove(currentObject);
+                currentObject.traverse(object => {
+                    if (object.isMesh) {
+                        if (object.geometry) object.geometry.dispose();
+                        if (object.material) {
+                            if (Array.isArray(object.material)) {
+                                object.material.forEach(material => {
+                                    if (material.map) material.map.dispose();
+                                    material.dispose();
+                                });
+                            } else {
+                                if (object.material.map) object.material.map.dispose();
+                                object.material.dispose();
+                            }
+                        }
+                    }
+                });
+                currentObject = null;
+            }
+            if (mixer) {
+                mixer.stopAllAction(); 
+                mixer = null; 
+            }
+        }
+
+        function addObjectToScene(object) {
+            clearScene(); 
+            currentObject = new THREE.Group(); 
+            const box = new THREE.Box3().setFromObject(object);
+            const center = box.getCenter(new THREE.Vector3());
+            object.position.sub(center); 
+            currentObject.add(object);
+            scene.add(currentObject);
+            frameObject(currentObject, box);
+        }
+
+        function frameObject(objectToFrame, boundingBoxInput) {
+            if (!camera || !controls || !objectToFrame) return;
+            let boundingBox = boundingBoxInput;
+            if (!boundingBox) boundingBox = new THREE.Box3().setFromObject(objectToFrame);
+            const size = boundingBox.getSize(new THREE.Vector3());
+            const maxSize = Math.max(size.x, size.y, size.z);
+            if (maxSize === 0 || !isFinite(maxSize)) { 
+                camera.position.set(0, 1, 5);
+                controls.target.set(0,0,0);
+                camera.near = 0.1;
+                camera.far = 1000;
+            } else {
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxSize / 2 / Math.tan(fov / 2));
+                cameraZ *= 1.5; 
+                controls.target.set(0,0,0); 
+                camera.position.set(0, size.y * 0.25 , cameraZ); 
+                camera.near = Math.max(0.01, cameraZ / 1000); 
+                camera.far = cameraZ * 100;
+            }
+            camera.updateProjectionMatrix();
+            controls.update();
+        }
+
+        // --- UI and Mode Switching ---
+        function setRenderModeUI(mode, activeButtonId) { 
+            currentRenderMode = mode;
+            updateRenderModeButtonUI(activeButtonId);
+            toggleSBSControls(mode === 'SBS');
+            onWindowResize(); 
+        }
+
+        function updateRenderModeButtonUI(activeButtonId) {
+            [mode2DButton, modeSBSButton, modeAnaglyphButton].forEach(button => button.classList.remove('active'));
+            const activeButton = document.getElementById(activeButtonId);
+            if (activeButton) activeButton.classList.add('active');
+        }
+        
+        function setAspectRatioModeUI(mode, activeButtonId) {
+            currentAspectRatioMode = mode;
+            updateAspectRatioButtonUI(activeButtonId);
+            onWindowResize(); 
+        }
+
+        function updateAspectRatioButtonUI(activeButtonId) {
+            [aspectOriginalButton, aspect16x9Button, aspect4x3Button].forEach(button => button.classList.remove('active'));
+            const activeButton = document.getElementById(activeButtonId);
+            if (activeButton) activeButton.classList.add('active');
+        }
+
+
+        function toggleSBSControls(show) {
+            if (sbsControlsDiv) sbsControlsDiv.style.display = show ? 'flex' : 'none';
+        }
+
+        // --- Full Screen ---
+        function toggleFullScreen() {
+            if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+                const elementToFullscreen = document.documentElement; 
+                if (elementToFullscreen.requestFullscreen) elementToFullscreen.requestFullscreen();
+                else if (elementToFullscreen.webkitRequestFullscreen) elementToFullscreen.webkitRequestFullscreen();
+                else if (elementToFullscreen.msRequestFullscreen) elementToFullscreen.msRequestFullscreen();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                else if (document.msExitFullscreen) document.msExitFullscreen();
+            }
+        }
+
+        function handleFullScreenChange() {
+            const isFullScreen = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+            fullscreenButton.textContent = isFullScreen ? 'Exit Full Screen' : 'Full Screen';
+            if(mainHeader) mainHeader.style.display = isFullScreen ? 'none' : 'flex'; 
+            if(controlsPanel) controlsPanel.style.display = isFullScreen ? 'none' : 'block'; 
+            onWindowResize(); 
+        }
+        
+        // --- Keyboard Controls ---
+        function handleKeyDown(event) {
+            const isFullScreen = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+
+            if (event.key === 'Escape' && isFullScreen) {
+                toggleFullScreen(); 
+            }
+            if (isFullScreen && currentRenderMode === 'SBS') {
+                if (event.shiftKey && event.key === '1') { 
+                    let currentVal = parseFloat(eyeSeparationSlider.value) - SBS_KEYBOARD_STEP;
+                    currentVal = Math.max(parseFloat(eyeSeparationSlider.min), currentVal);
+                    eyeSeparationSlider.value = currentVal;
+                    if(stereoEffect) stereoEffect.eyeSeparation = currentVal;
+                    eyeSeparationValueDisplay.textContent = currentVal.toFixed(3);
+                    event.preventDefault(); 
+                } else if (event.shiftKey && event.key === '2') { 
+                     let currentVal = parseFloat(eyeSeparationSlider.value) + SBS_KEYBOARD_STEP;
+                    currentVal = Math.min(parseFloat(eyeSeparationSlider.max), currentVal);
+                    eyeSeparationSlider.value = currentVal;
+                    if(stereoEffect) stereoEffect.eyeSeparation = currentVal;
+                    eyeSeparationValueDisplay.textContent = currentVal.toFixed(3);
+                    event.preventDefault(); 
+                }
+            }
+
+            if (event.shiftKey) {
+                switch (event.key.toUpperCase()) {
+                    case 'O':
+                        setAspectRatioModeUI('original', 'aspectOriginalButton');
+                        event.preventDefault();
+                        break;
+                    case 'W':
+                        setAspectRatioModeUI('16:9', 'aspect16x9Button');
+                        event.preventDefault();
+                        break;
+                    case 'S': // Using 'S' for Standard (4:3) to avoid conflict if 'A' is used elsewhere
+                        setAspectRatioModeUI('4:3', 'aspect4x3Button');
+                        event.preventDefault();
+                        break;
+                }
+            }
+        }
+
+
+        // --- Zoom and Center Controls (Manual Implementation) ---
+        const tempVector = new THREE.Vector3();
+
+        function zoomIn() {
+            if (!controls || !camera) return;
+            tempVector.subVectors(camera.position, controls.target).multiplyScalar(ZOOM_FACTOR); 
+            camera.position.copy(controls.target).add(tempVector); 
+            controls.update();
+        }
+
+        function zoomOut() {
+             if (!controls || !camera) return;
+            tempVector.subVectors(camera.position, controls.target).multiplyScalar(1 / ZOOM_FACTOR); 
+            camera.position.copy(controls.target).add(tempVector); 
+            controls.update();
+        }
+
+        function centerCurrentObject() {
+            if (currentObject) {
+                const boundingBox = new THREE.Box3().setFromObject(currentObject);
+                frameObject(currentObject, boundingBox);
+            } else {
+                camera.position.set(0, 1, 5);
+                if (controls) {
+                    controls.target.set(0,0,0);
+                    controls.update();
+                }
+            }
+        }
+
+        function showLoading(isLoading) { loadingIndicator.style.display = isLoading ? 'block' : 'none'; }
+        function showError(message) { errorMessageDiv.textContent = message; errorMessageDiv.style.display = 'block'; }
+        function hideError() { errorMessageDiv.style.display = 'none'; }
+
+        // Initialize
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+        else init();
+    </script>
+</body>
+</html>
