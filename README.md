@@ -4,7 +4,7 @@ A simple web app for viewing STL and GLB objects in SBS or Anaglyph modes
 
 Initial working version vibe coded with Gemini
 
-Supports STL and GLB with animation formats, and then allows for SBS and Anaglyph presentation. 
+Supports STL and GLB/FBX with animation formats, and then allows for SBS and Anaglyph presentation. 
 
 The full screen button option enables this to trigger 3D mode on display devices such as the Samsung Odyssey 3D monitor
 
