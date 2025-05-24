@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Futuristic 3D Model Viewer - Advanced</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+            }
+        }
+    </script>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f0f2f5;
+            color: #1a202c;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 0;
+            overflow-x: hidden; /* Prevent horizontal scrollbars */
+        }
+        .page-wrapper { 
+            @apply w-full px-4 sm:px-6 lg:px-8;
+            transition: opacity 0.2s ease-out, max-height 0.3s ease-out, visibility 0.3s step-end, padding 0.3s ease-out, margin 0.3s ease-out;
+        }
+        .page-wrapper.fullscreen-hide,
+        #controlsWrapper.fullscreen-hide {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            max-height: 0px !important;
+            overflow: hidden !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important; 
+            visibility: hidden !important; 
+            transition: opacity 0.2s ease-out, max-height 0.3s ease-out, visibility 0s 0.3s, padding 0.3s ease-out, margin 0.3s ease-out;
+        }
+        .main-controls-footer-container { 
+             @apply w-full max-w-5xl mx-auto;
+        }
+        #viewerContainer { 
+            width: 100%; 
+            height: 65vh; 
+            position: relative; 
+            overflow: hidden; 
+            background-color: #e2e8f0; 
+            transition: height 0.3s ease-out, top 0.3s ease-out, left 0.3s ease-out;
+        }
+        #viewerContainer.fullscreen-active {
+            position: fixed !important; 
+            top: 0 !important;
+            left: 0 !important;
+            height: 100vh !important; 
+            width: 100vw !important; 
+            z-index: 5000 !important; 
+        }
+        #backgroundImageElement {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover;
+            z-index: 0; 
+            transition: filter 0.2s ease-out;
+        }
+        canvas { 
+            display: block; 
+            position: relative; 
+            z-index: 1; 
+        }
+        .loader {
+            border: 4px solid #cbd5e1; 
+            border-top: 4px solid #2563eb; 
+            border-radius: 50%;
+            width: 40px; height: 40px;
+            animation: spin 0.8s linear infinite;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10; 
+        }
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        .message-box {
+            position: absolute; top: 1rem; left: 50%;
+            transform: translateX(-50%);
+            padding: 0.75rem 1.25rem; border-radius: 0.5rem;
+            font-size: 0.875rem; font-weight: 500;
+            z-index: 1000; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+            pointer-events: none;
+        }
+        .message-box.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+        .message-box.error { background-color: #ef4444; color: white; }
+        .message-box.success { background-color: #22c55e; color: white; }
+        .message-box.info { background-color: #3b82f6; color: white; }
+        
+        .control-button {
+            @apply flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-150 ease-in-out text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75;
+        }
+        .control-button.secondary { @apply bg-gray-200 hover:bg-gray-300 text-gray-700 border border-gray-300; }
+        .control-button.danger { @apply bg-red-500 hover:bg-red-600; }
+        .control-button.success { @apply bg-green-500 hover:bg-green-600; }
+        .input-field { @apply block w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-150 shadow-sm; }
+        .control-section { @apply mb-4 p-4 bg-gray-50 rounded-lg shadow; }
+        .slider-container { @apply mt-4 p-4 bg-gray-100 rounded-lg shadow-inner; }
+        .slider-group { @apply flex-1 min-w-[200px]; } 
+        .slider-label { @apply block text-sm font-medium text-gray-600 mb-1.5 flex justify-between items-center; }
+        .slider { @apply w-full h-2.5 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50; }
+        .slider::-webkit-slider-thumb { @apply appearance-none w-5 h-5 bg-blue-600 rounded-full shadow-md cursor-pointer transition-transform duration-100 ease-in-out ring-2 ring-white; }
+        .slider::-moz-range-thumb { @apply appearance-none w-5 h-5 bg-blue-600 rounded-full shadow-md cursor-pointer border-none ring-2 ring-white; }
+        .hotkey-info { @apply text-xs text-gray-500 leading-relaxed; }
+        .header-title {
+             font-family: 'Orbitron', sans-serif;
+             @apply text-3xl sm:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600;
+             text-shadow: 1px 1px 2px rgba(0,0,0,0.1), 0 0 5px rgba(100,100,200,0.3), 0 0 10px rgba(150,100,250,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="page-wrapper mt-8" id="headerPageWrapper"> <div class="main-controls-footer-container">
+            <header class="mb-6 sm:mb-8 text-center">
+                <h1 class="header-title">3D Model Viewer Ultra</h1>
+            </header>
+            <div id="controlsWrapper" class="transition-all duration-300 ease-in-out">
+                <div class="control-section">
+                    <label for="modelUrlInput" class="block text-sm font-medium text-gray-600 mb-2">Load Model from URL (.glb, .gltf, .fbx, .obj, .stl)</label>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input type="text" id="modelUrlInput" class="input-field flex-grow" placeholder="https://example.com/model.glb">
+                        <button id="loadUrlButton" class="control-button">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            Load URL (L)
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-3 mb-4"> 
+                    <button id="loadFileButton" class="control-button secondary">
+                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M12 15l5-5m0 0l-5-5m5 5H3"></path></svg>
+                        Load Device (O)
+                    </button>
+                    <input type="file" id="fileInput" accept=".glb,.gltf,.fbx,.stl,.obj" class="hidden">
+                     <button id="centreButton" class="control-button secondary"> <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Centre (R)
+                    </button>
+                    <button id="changeViewButton" class="control-button secondary">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM21 12c-1.657 4.477-6.063 8-9 8s-7.343-3.523-9-8c1.657-4.477 6.063-8 9-8s7.343 3.523 9 8zM12 15a3 3 0 100-6 3 3 0 000 6z"></path></svg>
+                        Change View (V)
+                    </button>
+                    <button id="sbsModeButton" class="control-button success">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                        Toggle SBS (S)
+                    </button>
+                    <button id="loadBgButton" class="control-button secondary">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        Load BG (B)
+                    </button>
+                    <input type="file" id="bgImageInput" accept="image/*" class="hidden">
+                    <button id="fullscreenButton" class="control-button secondary">
+                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                        Fullscreen (F)
+                    </button>
+                     <button id="brighterButton" class="control-button secondary">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                        Brighter (Sh+=)
+                    </button>
+                    <button id="darkerButton" class="control-button secondary">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                        Darker (Sh+-)
+                    </button>
+                    <button id="randomLightButton" class="control-button secondary">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        Random Light (Alt+L)
+                    </button>
+                </div>
+                <div id="sbsSlidersContainer" class="hidden slider-container">
+                    <div class="flex flex-col sm:flex-row gap-6">
+                        <div class="slider-group"><label for="eyeSeparationSlider" class="slider-label"><span>Eye Separation (Sh+A/D)</span><span id="eyeSeparationValue" class="font-mono text-blue-600">0.064</span></label><input type="range" id="eyeSeparationSlider" min="0" max="0.2" step="0.001" value="0.064" class="slider"></div>
+                        <div class="slider-group"><label for="focusDepthSlider" class="slider-label"><span>Focus Depth (Sh+W/S)</span><span id="focusDepthValue" class="font-mono text-blue-600">10.0</span></label><input type="range" id="focusDepthSlider" min="0.1" max="50" step="0.1" value="10" class="slider"></div>
+                    </div>
+                </div>
+                <div id="bgBlurSliderContainer" class="hidden slider-container mt-4"> <div><label for="bgBlurSlider" class="slider-label"><span>Background Blur (Sh+Z/C)</span><span id="bgBlurValue" class="font-mono text-blue-600">0px</span></label><input type="range" id="bgBlurSlider" min="0" max="20" step="0.5" value="0" class="slider"></div></div>
+                <div id="exposureSliderContainer" class="slider-container mt-4"> <div>
+                        <label for="exposureSlider" class="slider-label">
+                            <span>Scene Exposure (Sh+E/Q)</span>
+                            <span id="exposureValue" class="font-mono text-blue-600">1.0</span>
+                        </label>
+                        <input type="range" id="exposureSlider" min="0.1" max="3" step="0.05" value="1.0" class="slider">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="viewerContainer"><img id="backgroundImageElement" src="#" alt="Custom background" style="display: none;" /><div id="messageBox" class="message-box"></div></div>
+    <div class="page-wrapper mb-8" id="footerPageWrapper"> <div class="main-controls-footer-container">
+            <footer class="mt-6 text-center">
+                <p class="hotkey-info">Default: <a href="https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Helmet</a>. Orbit: LMB | Zoom: Scroll | Pan: RMB.</p>
+                <p class="hotkey-info">Keys: Load URL (L), Device (O), Centre (R), View (V), BG (B), SBS (S), Fullscreen (F), Exit Fullscreen (Esc).</p>
+                <p class="hotkey-info">Light: Bright (Sh+=), Dark (Sh+-), Random (Alt+L). Exposure (Sh+E/Q).</p>
+                <p class="hotkey-info">SBS: Eye Sep (Sh+A/D), Focus (Sh+W/S). BG Blur: (Sh+Z/C).</p>
+                <p class="hotkey-info">Supported: .glb, .gltf, .fbx (anim), .obj, .stl. OBJ materials (.mtl) might need manual handling.</p>
+            </footer>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+
+        let scene, camera, renderer, controls, stereoCamera, clock, mixer;
+        let ambientLight, keyLight, fillLight; 
+        let sbsMode = false;
+        let currentModel = null;
+        let animationFrameId;
+        let isFullscreen = false;
+        let currentViewIndex = 0;
+        let modelBoundingSphereRadius = 1; 
+
+        const viewerContainer = document.getElementById('viewerContainer');
+        const modelUrlInput = document.getElementById('modelUrlInput');
+        const loadUrlButton = document.getElementById('loadUrlButton');
+        const loadFileButton = document.getElementById('loadFileButton');
+        const fileInput = document.getElementById('fileInput');
+        const centreButton = document.getElementById('centreButton'); 
+        const changeViewButton = document.getElementById('changeViewButton');
+        const sbsModeButton = document.getElementById('sbsModeButton');
+        const fullscreenButton = document.getElementById('fullscreenButton');
+        const brighterButton = document.getElementById('brighterButton');
+        const darkerButton = document.getElementById('darkerButton');
+        const randomLightButton = document.getElementById('randomLightButton');
+        const messageBox = document.getElementById('messageBox');
+        const controlsWrapper = document.getElementById('controlsWrapper');
+        const sbsSlidersContainer = document.getElementById('sbsSlidersContainer');
+        const eyeSeparationSlider = document.getElementById('eyeSeparationSlider');
+        const eyeSeparationValue = document.getElementById('eyeSeparationValue');
+        const focusDepthSlider = document.getElementById('focusDepthSlider');
+        const focusDepthValue = document.getElementById('focusDepthValue');
+        const loadBgButton = document.getElementById('loadBgButton');
+        const bgImageInput = document.getElementById('bgImageInput');
+        const backgroundImageElement = document.getElementById('backgroundImageElement');
+        const bgBlurSliderContainer = document.getElementById('bgBlurSliderContainer');
+        const bgBlurSlider = document.getElementById('bgBlurSlider');
+        const bgBlurValue = document.getElementById('bgBlurValue');
+        const exposureSliderContainer = document.getElementById('exposureSliderContainer');
+        const exposureSlider = document.getElementById('exposureSlider');
+        const exposureValue = document.getElementById('exposureValue');
+        const headerPageWrapper = document.getElementById('headerPageWrapper');
+        const footerPageWrapper = document.getElementById('footerPageWrapper');
+        
+        const defaultModelUrl = 'https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf';
+        modelUrlInput.value = defaultModelUrl;
+
+        const viewVectors = [
+            new THREE.Vector3(0, 0, 1),   // Front
+            new THREE.Vector3(0, 0, -1),  // Back
+            new THREE.Vector3(-1, 0, 0),  // Left
+            new THREE.Vector3(1, 0, 0),   // Right
+            new THREE.Vector3(0, 1, 0.001), 
+            new THREE.Vector3(0, -1, 0.001),
+            new THREE.Vector3(1, 1, 1).normalize(), 
+            new THREE.Vector3(-1, 1, 1).normalize() 
+        ];
+
+
+        function showMessage(message, type = 'error', duration = 3500) {
+            messageBox.textContent = message;
+            messageBox.className = `message-box ${type} show`;
+            setTimeout(() => { messageBox.classList.remove('show'); }, duration);
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            clock = new THREE.Clock(); 
+            
+            camera = new THREE.PerspectiveCamera(75, viewerContainer.clientWidth / viewerContainer.clientHeight, 0.1, 1000);
+            camera.position.set(0, 0.5, 2); 
+            camera.focus = parseFloat(focusDepthSlider.value);
+
+            stereoCamera = new THREE.StereoCamera();
+            stereoCamera.eyeSep = parseFloat(eyeSeparationSlider.value);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); 
+            renderer.setClearColor(0x000000, 0); 
+            renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = parseFloat(exposureSlider.value); 
+            renderer.outputColorSpace = THREE.SRGBColorSpace; 
+            viewerContainer.appendChild(renderer.domElement); 
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor = 0.05;
+            controls.target.set(0, 0, 0); 
+            controls.minDistance = 0.001; 
+            controls.maxDistance = Infinity; 
+            controls.screenSpacePanning = true;
+            controls.update();
+            
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.8); scene.add(ambientLight);
+            keyLight = new THREE.DirectionalLight(0xffffff, 1.2); keyLight.position.set(-5, 5, 5); scene.add(keyLight);
+            fillLight = new THREE.DirectionalLight(0xffffff, 0.6); fillLight.position.set(5, 2, 5); scene.add(fillLight);
+            
+            new RGBELoader()
+                .setPath('https://cdn.jsdelivr.net/npm/three@0.164.1/examples/textures/equirectangular/')
+                .load('venice_sunset_1k.hdr', (texture) => {
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    scene.environment = texture; 
+                }, undefined, (error) => console.warn("Could not load HDR environment map:", error));
+
+            loadUrlButton.addEventListener('click', () => loadModelFromUrl(modelUrlInput.value));
+            loadFileButton.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleFileSelect);
+            centreButton.addEventListener('click', goToModelCenter); 
+            changeViewButton.addEventListener('click', cycleView);
+            sbsModeButton.addEventListener('click', toggleSBSMode);
+            fullscreenButton.addEventListener('click', toggleFullscreen);
+            brighterButton.addEventListener('click', increaseLightIntensity);
+            darkerButton.addEventListener('click', decreaseLightIntensity);
+            randomLightButton.addEventListener('click', randomizeLightAngle);
+            exposureSlider.addEventListener('input', updateExposure);
+            eyeSeparationSlider.addEventListener('input', updateEyeSeparation);
+            focusDepthSlider.addEventListener('input', updateFocusDepth);
+            loadBgButton.addEventListener('click', () => bgImageInput.click());
+            bgImageInput.addEventListener('change', handleBgImageSelect);
+            bgBlurSlider.addEventListener('input', updateBgBlur);
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('keydown', handleKeydown);
+            document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+            eyeSeparationValue.textContent = parseFloat(eyeSeparationSlider.value).toFixed(3);
+            focusDepthValue.textContent = parseFloat(focusDepthSlider.value).toFixed(1);
+            bgBlurValue.textContent = `${parseFloat(bgBlurSlider.value).toFixed(1)}px`;
+            exposureValue.textContent = parseFloat(exposureSlider.value).toFixed(2);
+
+
+            loadModelFromUrl(defaultModelUrl); 
+            animate();
+        }
+
+        function updateEyeSeparation(event) { stereoCamera.eyeSep = parseFloat(event.target.value); eyeSeparationValue.textContent = parseFloat(event.target.value).toFixed(3); }
+        function updateFocusDepth(event) { camera.focus = parseFloat(event.target.value); focusDepthValue.textContent = parseFloat(event.target.value).toFixed(1); if (sbsMode) stereoCamera.update(camera); }
+        function updateBgBlur(event) { const val = parseFloat(event.target.value); backgroundImageElement.style.filter = `blur(${val}px)`; bgBlurValue.textContent = `${val.toFixed(1)}px`;}
+        function updateExposure(event) { 
+            const val = parseFloat(event.target.value);
+            renderer.toneMappingExposure = val;
+            exposureValue.textContent = val.toFixed(2);
+        }
+
+        function handleBgImageSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => { backgroundImageElement.src = e.target.result; backgroundImageElement.style.display = 'block'; bgBlurSliderContainer.classList.remove('hidden'); updateBgBlur({target: bgBlurSlider}); }
+                reader.readAsDataURL(file); showMessage("Background image loaded.", "success");
+            }
+            bgImageInput.value = null;
+        }
+
+        function showLoader() { let loader = viewerContainer.querySelector('#loadingIndicator'); if (!loader) { loader = document.createElement('div'); loader.className = 'loader'; loader.id = 'loadingIndicator'; viewerContainer.appendChild(loader); } loader.style.display = 'block'; }
+        function hideLoader() { const loader = viewerContainer.querySelector('#loadingIndicator'); if (loader) loader.style.display = 'none'; }
+        
+        function cleanupCurrentModel() {
+            if (currentModel) {
+                scene.remove(currentModel);
+                currentModel.traverse(child => {
+                    if (child.isMesh) {
+                        child.geometry.dispose();
+                        if (child.material.isMaterial) cleanMaterial(child.material);
+                        else if (Array.isArray(child.material)) child.material.forEach(cleanMaterial);
+                    }
+                });
+                currentModel = null;
+            }
+            if (mixer) { 
+                mixer.stopAllAction();
+                mixer = null; 
+            }
+        }
+        
+        function performInitialFraming() { 
+            if (!currentModel || !camera || !controls) return;
+            
+            // Ensure model's world matrix is up-to-date for accurate bounding box.
+            currentModel.updateMatrixWorld(true);
+            const box = new THREE.Box3().setFromObject(currentModel); 
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            
+            modelBoundingSphereRadius = box.getBoundingSphere(new THREE.Sphere()).radius;
+            modelBoundingSphereRadius = modelBoundingSphereRadius > 0.0001 ? modelBoundingSphereRadius : 0.5; // Fallback for tiny/zero radius
+
+            const maxSize = Math.max(size.x, size.y, size.z);
+
+            if (maxSize === 0 || !isFinite(maxSize)) { 
+                camera.position.set(0, 0, 5); 
+                controls.target.set(0,0,0);
+                camera.near = 0.1;
+                camera.far = 1000;
+                showMessage("Warning: Model has zero or invalid dimensions. Using default view.", "info");
+            } else {
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxSize / 2 / Math.tan(fov / 2)); 
+                cameraZ *= 1.5; // Padding factor from example
+                
+                // Position camera based on the model's scaled size and centered position (which is origin)
+                camera.position.set(0, size.y * 0.25, cameraZ); 
+                controls.target.set(0, 0, 0); // Model is at origin
+                camera.lookAt(0,0,0);
+            
+                // Dynamic near/far based on cameraZ (distance from origin)
+                camera.near = Math.max(0.01, cameraZ / 1000); 
+                camera.far = cameraZ * 100;                
+                
+                if (camera.near <= 0) camera.near = 0.01; // Ensure near is positive
+                if (camera.near >= camera.far) { 
+                    camera.far = camera.near + Math.max(100, modelBoundingSphereRadius * 10); // Ensure far is greater
+                }
+            }
+            camera.updateProjectionMatrix();
+
+            camera.focus = camera.position.length(); 
+            focusDepthSlider.value = camera.focus.toFixed(1);
+            focusDepthValue.textContent = camera.focus.toFixed(1);
+            if (sbsMode) stereoCamera.update(camera);
+        
+            controls.update();
+        }
+
+        function goToModelCenter() {
+            if (!currentModel) return;
+
+            camera.position.set(0, 0, 0); 
+            controls.target.set(0, 0, -0.1); 
+            camera.lookAt(controls.target);
+
+            camera.near = 0.001; 
+            camera.far = (modelBoundingSphereRadius > 0.001 ? modelBoundingSphereRadius * 3 : 100); 
+            if (camera.near >= camera.far) {
+                 camera.far = camera.near + 100; 
+            }
+            camera.updateProjectionMatrix();
+
+            camera.focus = 0.1; 
+            focusDepthSlider.value = camera.focus.toFixed(1);
+            focusDepthValue.textContent = camera.focus.toFixed(1);
+            if (sbsMode) stereoCamera.update(camera);
+
+            controls.update();
+            showMessage("Camera moved to model center.", "info");
+        }
+
+
+        function processLoadedModel(object, animations) {
+            cleanupCurrentModel(); 
+            currentModel = object;
+            currentViewIndex = 0; 
+        
+            const box = new THREE.Box3().setFromObject(currentModel); // Initial box
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+        
+            currentModel.position.sub(center); // Center the model at the origin
+        
+            const maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0 && isFinite(maxDim)) { // Added isFinite check
+                const scaleFactor = 1.5 / maxDim; 
+                currentModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
+            } else {
+                currentModel.scale.set(1, 1, 1); 
+                showMessage("Warning: Model has zero, invalid, or non-finite dimensions. Displaying at default scale.", "info");
+            }
+            
+            currentModel.updateMatrixWorld(true); // IMPORTANT: Update world matrix after transform
+            scene.add(currentModel);
+            
+            performInitialFraming(); 
+        
+            if (animations && animations.length) {
+                mixer = new THREE.AnimationMixer(currentModel);
+                const action = mixer.clipAction(animations[0]); 
+                action.play();
+                showMessage("Model loaded. Animation playing.", "success");
+            } else {
+                showMessage("Model loaded successfully!", "success");
+            }
+            hideLoader();
+        }
+        
+        function cycleView() {
+            if (!currentModel) return;
+
+            currentViewIndex = (currentViewIndex + 1) % viewVectors.length;
+            const viewDirection = viewVectors[currentViewIndex].clone();
+            
+            const viewDistanceOffset = modelBoundingSphereRadius > 0.001 ? modelBoundingSphereRadius * 2.75 : 5; 
+
+            const newPosition = viewDirection.multiplyScalar(viewDistanceOffset);
+            camera.position.copy(newPosition);
+            camera.lookAt(0, 0, 0); 
+            controls.target.set(0, 0, 0);
+            controls.update();
+
+            camera.focus = camera.position.length(); 
+            focusDepthSlider.value = camera.focus.toFixed(1);
+            focusDepthValue.textContent = camera.focus.toFixed(1);
+            if (sbsMode) stereoCamera.update(camera);
+        }
+
+
+        function cleanMaterial(material) {
+            material.dispose();
+            for (const key of Object.keys(material)) {
+                const value = material[key];
+                if (value && typeof value.dispose === 'function') value.dispose();
+            }
+        }
+        
+        async function loadModel(url, fileName = '') { 
+            showLoader();
+            const extension = (fileName.split('.').pop() || url.split('.').pop() || '').toLowerCase();
+            let loader;
+
+            switch (extension) {
+                case 'glb': case 'gltf':
+                    loader = new GLTFLoader();
+                    try {
+                        const gltf = await loader.loadAsync(url); 
+                        const texturePromises = [];
+                        gltf.scene.traverse(function (node) {
+                            if (node.isMesh && node.material) {
+                                const materials = Array.isArray(node.material) ? node.material : [node.material];
+                                materials.forEach(material => { 
+                                    if (material.isMeshStandardMaterial) {
+                                        const specGlossData = material.userData?.gltfExtensions?.KHR_materials_pbrSpecularGlossiness;
+                                        if (specGlossData && specGlossData.diffuseTexture !== undefined) {
+                                            if (!material.map) { 
+                                                const promise = (async () => {
+                                                    try {
+                                                        const textureInfo = specGlossData.diffuseTexture;
+                                                        const textureIndex = textureInfo.index;
+                                                        if (gltf.parser && gltf.parser.json && gltf.parser.json.textures && gltf.parser.json.textures[textureIndex]) {
+                                                            const threeTexture = await gltf.parser.getDependency('texture', textureIndex);
+                                                            if (threeTexture instanceof THREE.Texture) {
+                                                                material.map = threeTexture;
+                                                            }
+                                                        } else {
+                                                             console.warn(`Texture definition not found for index ${textureIndex} in KHR_materials_pbrSpecularGlossiness.`);
+                                                        }
+                                                    } catch (texError) {
+                                                        console.warn(`Could not load KHR_materials_pbrSpecularGlossiness diffuseTexture for material: ${material.name}`, texError);
+                                                    }
+                                                })();
+                                                texturePromises.push(promise);
+                                            }
+                                        }
+                                        if (material.map) { 
+                                            if (material.map.colorSpace !== THREE.SRGBColorSpace) {
+                                                material.map.colorSpace = THREE.SRGBColorSpace;
+                                            }
+                                            material.needsUpdate = true; 
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                        await Promise.all(texturePromises); 
+                        processLoadedModel(gltf.scene, gltf.animations);
+                    } catch (error) {
+                        onError(error);
+                    }
+                    break;
+                case 'fbx':
+                    loader = new FBXLoader();
+                    loader.load(url, (object) => processLoadedModel(object, object.animations), undefined, onError);
+                    break;
+                case 'stl':
+                    loader = new STLLoader();
+                    loader.load(url, (geometry) => {
+                        const material = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.5, roughness: 0.5, flatShading: false });
+                        geometry.computeVertexNormals(); 
+                        const mesh = new THREE.Mesh(geometry, material);
+                        processLoadedModel(mesh, []);
+                    }, undefined, onError);
+                    break;
+                case 'obj':
+                    loader = new OBJLoader();
+                    loader.load(url, (object) => {
+                        object.traverse(child => {
+                            if (child.isMesh && (!child.material || (Array.isArray(child.material) && child.material.length === 0))) {
+                                child.material = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness:0.1, roughness:0.8 });
+                            }
+                        });
+                        processLoadedModel(object, []);
+                        showMessage("OBJ loaded. Materials may require a separate .MTL file not automatically handled.", "info", 5000);
+                    }, undefined, onError);
+                    break;
+                default:
+                    onError(`Unsupported file format: .${extension}`);
+                    return;
+            }
+        }
+
+        function onError(error) {
+            console.error('Error loading model:', error);
+            hideLoader();
+            const errorMessage = error.message ? error.message : (typeof error === 'string' ? error : 'Unknown error during loading.');
+            showMessage(`Error: ${errorMessage}. Check console.`, "error", 7000);
+        }
+
+        function increaseLightIntensity() {
+            const step = 0.25; 
+            ambientLight.intensity = Math.min(5, ambientLight.intensity + step); 
+            keyLight.intensity = Math.min(8, keyLight.intensity + step * 1.5); 
+            fillLight.intensity = Math.min(5, fillLight.intensity + step * 0.75); 
+        }
+
+        function decreaseLightIntensity() {
+            const step = 0.25; 
+            ambientLight.intensity = Math.max(0, ambientLight.intensity - step);
+            keyLight.intensity = Math.max(0, keyLight.intensity - step * 1.5);
+            fillLight.intensity = Math.max(0, fillLight.intensity - step * 0.75);
+        }
+
+        function randomizeLightAngle() {
+            if (!keyLight) return;
+            const distance = modelBoundingSphereRadius > 0.1 ? modelBoundingSphereRadius * 5 : 10; 
+            keyLight.position.set(
+                (Math.random() - 0.5) * 2 * distance,
+                Math.random() * distance, 
+                (Math.random() - 0.5) * 2 * distance
+            ).normalize().multiplyScalar(distance);
+            showMessage("Light angle randomized.", "info");
+        }
+
+
+        function loadModelFromUrl(url) { if (!url) { showMessage("Please enter a model URL.", "error"); return; } loadModel(url); }
+        function handleFileSelect(event) { const file = event.target.files[0]; if (!file) return; const objectURL = URL.createObjectURL(file); loadModel(objectURL, file.name); fileInput.value = null; }
+        function toggleSBSMode() {
+            sbsMode = !sbsMode;
+            const sbsIconSVG = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>`;
+            const sbsExitIconSVG = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7 .946-3.112 3.586-5.413 6.654-6.28M15 12a3 3 0 11-6 0 3 3 0 016 0zm6.458-3.542A16.766 16.766 0 0112 5c-1.572 0-3.082.246-4.5.688M20 4L4 20"></path></svg>`;
+            sbsModeButton.innerHTML = (sbsMode ? `${sbsExitIconSVG} Exit SBS (S)` : `${sbsIconSVG} Enter SBS (S)`);
+            sbsModeButton.classList.toggle('danger', sbsMode); sbsModeButton.classList.toggle('success', !sbsMode);
+            sbsSlidersContainer.classList.toggle('hidden', !sbsMode);
+            onWindowResize(); 
+        }
+        function toggleFullscreen() { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => showMessage(`Error: ${err.message}`, "error")); else if (document.exitFullscreen) document.exitFullscreen(); }
+        
+        function handleFullscreenChange() { 
+            isFullscreen = !!document.fullscreenElement; 
+            
+            controlsWrapper.classList.toggle('fullscreen-hide', isFullscreen);
+            headerPageWrapper.classList.toggle('fullscreen-hide', isFullscreen);
+            footerPageWrapper.classList.toggle('fullscreen-hide', isFullscreen);
+
+            if (isFullscreen) {
+                viewerContainer.classList.add('fullscreen-active');
+            } else {
+                viewerContainer.classList.remove('fullscreen-active');
+            }
+            setTimeout(onWindowResize, 50); 
+        }
+
+        function onWindowResize() {
+            let newWidth, newHeight;
+            if (isFullscreen) { 
+                newWidth = window.innerWidth; 
+                newHeight = window.innerHeight; 
+            } else { 
+                newWidth = viewerContainer.clientWidth; 
+                newHeight = viewerContainer.clientHeight; 
+            }
+            
+            if (camera) { 
+                camera.aspect = sbsMode ? (newWidth / 2) / newHeight : newWidth / newHeight;
+                camera.updateProjectionMatrix();
+            }
+            if (renderer) { 
+                 renderer.setSize(newWidth, newHeight);
+            }
+        }
+        function animate() {
+            animationFrameId = requestAnimationFrame(animate);
+            const delta = clock.getDelta(); controls.update(); 
+            if (mixer) { mixer.update(delta); }
+            if (sbsMode) {
+                stereoCamera.update(camera); 
+                const width = renderer.domElement.width / renderer.getPixelRatio(); const height = renderer.domElement.height / renderer.getPixelRatio();
+                renderer.setScissorTest(true);
+                renderer.setScissor(0, 0, width / 2, height); renderer.setViewport(0, 0, width / 2, height); renderer.render(scene, stereoCamera.cameraL);
+                renderer.setScissor(width / 2, 0, width / 2, height); renderer.setViewport(width / 2, 0, width / 2, height); renderer.render(scene, stereoCamera.cameraR);
+                renderer.setScissorTest(false);
+            } else {
+                const width = renderer.domElement.width / renderer.getPixelRatio(); const height = renderer.domElement.height / renderer.getPixelRatio();
+                renderer.setViewport(0, 0, width, height); renderer.setScissorTest(false); renderer.render(scene, camera);
+            }
+        }
+        function handleKeydown(event) {
+            if (event.target.tagName === 'INPUT' && event.key !== 'Enter') return;
+            const sStepF = 0.001, sStepC = 0.01, fStepF = 0.1, fStepC = 1.0, bStepF = 0.1, bStepC = 1.0;       
+            const exposureStep = 0.05;
+
+            if (event.shiftKey) {
+                let sc = false; 
+                switch(event.key.toUpperCase()) {
+                    case 'A': eyeSeparationSlider.value = Math.max(parseFloat(eyeSeparationSlider.min), parseFloat(eyeSeparationSlider.value) - (event.altKey ? sStepC : sStepF)).toFixed(3); sc=true; eyeSeparationSlider.dispatchEvent(new Event('input')); break;
+                    case 'D': eyeSeparationSlider.value = Math.min(parseFloat(eyeSeparationSlider.max), parseFloat(eyeSeparationSlider.value) + (event.altKey ? sStepC : sStepF)).toFixed(3); sc=true; eyeSeparationSlider.dispatchEvent(new Event('input')); break;
+                    case 'W': focusDepthSlider.value = Math.min(parseFloat(focusDepthSlider.max), parseFloat(focusDepthSlider.value) + (event.altKey ? fStepC : fStepF)).toFixed(1); sc=true; focusDepthSlider.dispatchEvent(new Event('input')); break;
+                    case 'S': focusDepthSlider.value = Math.max(parseFloat(focusDepthSlider.min), parseFloat(focusDepthSlider.value) - (event.altKey ? fStepC : fStepF)).toFixed(1); sc=true; focusDepthSlider.dispatchEvent(new Event('input')); break;
+                    case 'Z': if (!bgBlurSliderContainer.classList.contains('hidden')) { bgBlurSlider.value = Math.max(parseFloat(bgBlurSlider.min), parseFloat(bgBlurSlider.value) - (event.altKey ? bStepC : bStepF)).toFixed(1); sc=true; bgBlurSlider.dispatchEvent(new Event('input'));} break;
+                    case 'C': if (!bgBlurSliderContainer.classList.contains('hidden')) { bgBlurSlider.value = Math.min(parseFloat(bgBlurSlider.max), parseFloat(bgBlurSlider.value) + (event.altKey ? bStepC : bStepF)).toFixed(1); sc=true; bgBlurSlider.dispatchEvent(new Event('input'));} break;
+                    case '=': 
+                    case '+': 
+                        increaseLightIntensity(); sc = true; break;
+                    case '-': 
+                        decreaseLightIntensity(); sc = true; break;
+                    case 'E': 
+                        exposureSlider.value = Math.min(parseFloat(exposureSlider.max), parseFloat(exposureSlider.value) + exposureStep).toFixed(2);
+                        sc=true; exposureSlider.dispatchEvent(new Event('input')); break;
+                    case 'Q': 
+                        exposureSlider.value = Math.max(parseFloat(exposureSlider.min), parseFloat(exposureSlider.value) - exposureStep).toFixed(2);
+                        sc=true; exposureSlider.dispatchEvent(new Event('input')); break;
+
+                }
+                if(sc) event.preventDefault();
+            } else if (event.altKey) { 
+                 switch(event.key.toUpperCase()) {
+                    case 'L': 
+                        randomizeLightAngle(); event.preventDefault(); break;
+                 }
+            } else { 
+                switch(event.key.toUpperCase()) {
+                    case 'L': event.preventDefault(); if (document.activeElement === modelUrlInput && modelUrlInput.value) loadUrlButton.click(); else { modelUrlInput.focus(); modelUrlInput.select(); } break;
+                    case 'O': event.preventDefault(); loadFileButton.click(); break;
+                    case 'R': event.preventDefault(); centreButton.click(); break; 
+                    case 'V': event.preventDefault(); changeViewButton.click(); break; 
+                    case 'B': event.preventDefault(); loadBgButton.click(); break; 
+                    case 'S': if (event.target.tagName !== 'INPUT') { event.preventDefault(); sbsModeButton.click(); } break;
+                    case 'F': event.preventDefault(); fullscreenButton.click(); break;
+                }
+            }
+        }
+        window.addEventListener('beforeunload', () => {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            cleanupCurrentModel(); 
+            if (renderer) renderer.dispose();
+            if(scene) scene.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.isMaterial) cleanMaterial(o.material); else if(Array.isArray(o.material)) for (const m of o.material) cleanMaterial(m);}});
+        });
+        init();
+    </script>
+</body>
+</html>
